@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inference, One Layer at a Time</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a field manual. Sticky chapter rail on the left, one reading column, instruments (calculators, plots) set into the column like figures. */
+:root{
+  --bg:#f3f5f8;
+  --surface:#ffffff;
+  --ink:#141a26;
+  --muted:#5a6475;
+  --line:#d9dee7;
+  --accent:#1d55d0;
+  --accent-soft:#e6edfc;
+  --done:#1d7a4d;
+  --done-soft:#e3f3ea;
+  --next:#a35a00;
+  --next-soft:#fbefdc;
+  --todo:#6b7280;
+  --todo-soft:#eceef2;
+  --crit:#b42318;
+  --crit-soft:#fdeceb;
+  --code-bg:#0f1626;
+  --code-ink:#dbe4f5;
+  --font-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --font-body:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"Cascadia Code",Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d121c;--surface:#151c2a;--ink:#e6ebf4;--muted:#9aa5b8;--line:#2a3446;
+    --accent:#7aa2ff;--accent-soft:#1c2a4a;--done:#5fd39a;--done-soft:#14302a;
+    --next:#f2b45c;--next-soft:#3a2a14;--todo:#9aa3b2;--todo-soft:#232b3a;
+    --crit:#ff8a80;--crit-soft:#3a1a1a;--code-bg:#0a0f1a;--code-ink:#dbe4f5;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d121c;--surface:#151c2a;--ink:#e6ebf4;--muted:#9aa5b8;--line:#2a3446;
+  --accent:#7aa2ff;--accent-soft:#1c2a4a;--done:#5fd39a;--done-soft:#14302a;
+  --next:#f2b45c;--next-soft:#3a2a14;--todo:#9aa3b2;--todo-soft:#232b3a;
+  --crit:#ff8a80;--crit-soft:#3a1a1a;--code-bg:#0a0f1a;--code-ink:#dbe4f5;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:16px}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}*{transition:none!important}}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 var(--font-body)}
+a{color:var(--accent)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+h1,h2,h3,h4{font-family:var(--font-display);text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:clamp(2rem,4.5vw,3rem);font-weight:800;letter-spacing:-.02em}
+h2{font-size:1.75rem;font-weight:800;letter-spacing:-.01em}
+h3{font-size:1.2rem;font-weight:700}
+h4{font-size:1rem;font-weight:700}
+p{margin:0}
+code{font-family:var(--font-mono);font-size:.88em;background:var(--accent-soft);padding:.1em .35em;border-radius:4px}
+pre{margin:0;background:var(--code-bg);color:var(--code-ink);padding:14px 16px;border-radius:8px;overflow-x:auto;font:13.5px/1.55 var(--font-mono)}
+pre code{background:none;padding:0;font-size:inherit;color:inherit}
+.c{color:#7f8ea8}.k{color:#ff9fd0}.s{color:#b7e48a}.n{color:#ffd28a}
+table{border-collapse:collapse;width:100%;font-size:.93rem;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+
+.shell{display:grid;grid-template-columns:260px minmax(0,1fr);gap:40px;max-width:1240px;margin:0 auto;padding:0 24px}
+nav.rail{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 0 40px}
+nav.rail .brand{font:800 1rem/1.2 var(--font-display);margin-bottom:4px}
+nav.rail .sub{color:var(--muted);font-size:.82rem;margin-bottom:20px}
+nav.rail ol{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+nav.rail a{display:flex;gap:10px;align-items:center;text-decoration:none;color:var(--ink);padding:6px 10px;border-radius:6px;font-size:.9rem}
+nav.rail a:hover{background:var(--surface)}
+nav.rail .grp{font:600 .72rem/1 var(--font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:16px 10px 6px}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.dot.done{background:var(--done)}.dot.next{background:var(--next)}.dot.todo{background:var(--todo);opacity:.5}.dot.rev{background:var(--crit)}
+main{padding:40px 0 120px;display:grid;gap:72px;min-width:0}
+section{display:grid;gap:20px;min-width:0}
+.prose{max-width:68ch;display:grid;gap:14px}
+.lede{font-size:1.12rem;color:var(--muted);max-width:62ch}
+.eyebrow{font:600 .75rem/1 var(--font-body);text-transform:uppercase;letter-spacing:.1em;color:var(--accent)}
+.chip{display:inline-flex;align-items:center;gap:6px;font:600 .72rem/1 var(--font-body);padding:5px 9px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.chip.done{background:var(--done-soft);color:var(--done)}
+.chip.next{background:var(--next-soft);color:var(--next)}
+.chip.todo{background:var(--todo-soft);color:var(--todo)}
+.chip.crit{background:var(--crit-soft);color:var(--crit)}
+.chip.info{background:var(--accent-soft);color:var(--accent)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;display:grid;gap:12px;min-width:0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.files{display:flex;flex-wrap:wrap;gap:6px}
+.files code{font-size:.78rem}
+.figure{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:20px;display:grid;gap:14px;min-width:0}
+.figure .cap{font:600 .78rem/1 var(--font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+.controls{display:flex;flex-wrap:wrap;gap:14px 20px;align-items:end}
+.controls label{display:grid;gap:4px;font-size:.82rem;color:var(--muted)}
+input[type=number],select{font:500 .95rem var(--font-mono);padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);width:130px}
+input[type=range]{width:200px;accent-color:var(--accent)}
+.readout{display:flex;flex-wrap:wrap;gap:12px}
+.stat{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 14px;min-width:150px}
+.stat b{display:block;font:700 1.35rem/1.2 var(--font-display);font-variant-numeric:tabular-nums}
+.stat span{font-size:.78rem;color:var(--muted)}
+.formula{font-family:var(--font-mono);background:var(--accent-soft);border-radius:8px;padding:10px 14px;font-size:.92rem;overflow-x:auto;white-space:pre}
+
+/* Hero */
+.hero{display:grid;gap:18px;padding-top:8px}
+.progress{display:grid;gap:8px;max-width:640px}
+.bar{height:10px;border-radius:99px;background:var(--todo-soft);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:16px;font-size:.85rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+
+/* Roadmap */
+.road{display:grid;gap:10px}
+.stage{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 16px;text-decoration:none;color:inherit}
+.stage:hover{border-color:var(--accent)}
+.stage .num{font:800 1.3rem/1 var(--font-display);color:var(--muted);font-variant-numeric:tabular-nums}
+.stage.done{border-left:4px solid var(--done)}
+.stage.next{border-left:4px solid var(--next)}
+.stage.todo{border-left:4px solid var(--line)}
+.stage p{color:var(--muted);font-size:.88rem}
+
+/* Concept blocks */
+.concept{display:grid;gap:14px;padding:22px;background:var(--surface);border:1px solid var(--line);border-radius:12px;min-width:0}
+.concept header{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:center}
+.concept .why{border-top:1px dashed var(--line);padding-top:12px;font-size:.93rem}
+.concept .why b{color:var(--accent)}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;font-size:.92rem}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-family:var(--font-mono)}
+
+/* Attention playground */
+.bars{display:grid;gap:6px}
+.barrow{display:grid;grid-template-columns:110px 1fr 70px;gap:10px;align-items:center;font-size:.88rem;font-variant-numeric:tabular-nums}
+.barrow .track{height:14px;background:var(--todo-soft);border-radius:4px;overflow:hidden}
+.barrow .fill{height:100%;background:var(--accent)}
+.mask{display:inline-grid;gap:3px}
+.mask div{width:34px;height:34px;display:grid;place-items:center;font:500 .72rem var(--font-mono);border-radius:4px}
+.mask .on{background:var(--accent-soft);color:var(--accent)}
+.mask .off{background:var(--crit-soft);color:var(--crit)}
+.mask .hd{background:none;color:var(--muted)}
+.heads{display:grid;gap:10px}
+.headrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.headrow .lbl{width:84px;font-size:.8rem;color:var(--muted)}
+.hb{width:34px;height:28px;border-radius:5px;display:grid;place-items:center;font:600 .72rem var(--font-mono);color:#fff}
+canvas{max-width:100%;display:block;border-radius:8px;background:var(--bg)}
+
+/* Review list */
+.review{display:grid;gap:14px}
+.issue{display:grid;grid-template-columns:6px minmax(0,1fr);gap:16px;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.issue .stripe{background:var(--next)}
+.issue.crit .stripe{background:var(--crit)}
+.issue.info .stripe{background:var(--accent)}
+.issue .body{padding:16px 18px 16px 0;display:grid;gap:10px;min-width:0}
+.issue header{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* Future modules */
+.module{display:grid;gap:12px;padding:22px;background:var(--surface);border:1px solid var(--line);border-radius:12px;min-width:0}
+.module .meta{display:flex;flex-wrap:wrap;gap:8px}
+.module ul{margin:0;padding-left:20px;display:grid;gap:4px}
+.module .build{background:var(--next-soft);border-radius:8px;padding:12px 14px;font-size:.93rem}
+.module .build b{color:var(--next)}
+.module .ask{font-size:.92rem;color:var(--muted)}
+.module .ask b{color:var(--ink)}
+
+/* Checklist */
+.check{display:grid;gap:6px}
+.check label{display:flex;gap:10px;align-items:flex-start;font-size:.93rem;padding:6px 8px;border-radius:6px}
+.check label:hover{background:var(--bg)}
+.check input{margin-top:4px;accent-color:var(--done)}
+
+details{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 16px}
+details summary{cursor:pointer;font-weight:600}
+details[open] summary{margin-bottom:8px}
+details p{color:var(--muted);font-size:.93rem}
+
+@media (max-width: 900px){
+  .shell{grid-template-columns:1fr;gap:0;padding:0 16px}
+  nav.rail{position:static;height:auto;padding:20px 0 0}
+  nav.rail ol{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+  main{padding-top:24px;gap:56px}
+  .stage{grid-template-columns:32px minmax(0,1fr)}
+  .stage .chip{grid-column:2}
+  .barrow{grid-template-columns:80px 1fr 60px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav class="rail" aria-label="Chapters">
+  <div class="brand">Inference, one layer at a time</div>
+  <div class="sub">A study site for <a href="https://github.com/apinee/learning_inferenec">apinee/learning_inferenec</a></div>
+  <ol>
+    <li><a href="#overview"><span class="dot done"></span>Overview</a></li>
+    <li><a href="#roadmap"><span class="dot done"></span>Roadmap</a></li>
+    <li class="grp">Built so far</li>
+    <li><a href="#tensors"><span class="dot done"></span>Tensors and precision</a></li>
+    <li><a href="#loading"><span class="dot done"></span>Safe loading and Qwen3</a></li>
+    <li><a href="#rmsnorm"><span class="dot done"></span>RMSNorm and profiling</a></li>
+    <li><a href="#attention"><span class="dot done"></span>Attention</a></li>
+    <li><a href="#mask"><span class="dot done"></span>Causal mask</a></li>
+    <li><a href="#gqa"><span class="dot done"></span>Multi-head and GQA</a></li>
+    <li><a href="#rope"><span class="dot done"></span>RoPE</a></li>
+    <li class="grp">Code review</li>
+    <li><a href="#review"><span class="dot rev"></span>Review notes</a></li>
+    <li class="grp">Next</li>
+    <li><a href="#finish"><span class="dot next"></span>Finish the forward pass</a></li>
+    <li><a href="#generation"><span class="dot todo"></span>Generation and KV cache</a></li>
+    <li><a href="#performance"><span class="dot todo"></span>Performance on hardware</a></li>
+    <li><a href="#serving"><span class="dot todo"></span>Serving systems</a></li>
+    <li><a href="#kernels"><span class="dot todo"></span>Kernels</a></li>
+    <li><a href="#quant"><span class="dot todo"></span>Quantization</a></li>
+    <li><a href="#decoding"><span class="dot todo"></span>Decoding algorithms</a></li>
+    <li><a href="#scale"><span class="dot todo"></span>Scale and long context</a></li>
+    <li><a href="#production"><span class="dot todo"></span>Production</a></li>
+    <li><a href="#ecosystem"><span class="dot todo"></span>Engines to know</a></li>
+    <li class="grp">Prepare</li>
+    <li><a href="#interview"><span class="dot todo"></span>Interview self-check</a></li>
+    <li><a href="#checklist"><span class="dot todo"></span>Progress checklist</a></li>
+    <li><a href="#reading"><span class="dot todo"></span>Reading list</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ============ OVERVIEW ============ -->
+<section id="overview" class="hero">
+  <div class="eyebrow">Study guide</div>
+  <h1>Inference, one layer at a time</h1>
+  <p class="lede">Everything your repo has covered so far, explained with working examples, followed by every topic still between you and an inference engineering role. The reference model throughout is Qwen3-0.6B, the same one your scripts load.</p>
+  <div class="progress">
+    <div class="bar" role="img" aria-label="Progress: 2 of 12 stages done, 1 in progress">
+      <i style="width:16.6%;background:var(--done)"></i><i style="width:8.4%;background:var(--next)"></i>
+    </div>
+    <div class="legend">
+      <span><span class="dot done"></span>Done: foundations, layer parts</span>
+      <span><span class="dot next"></span>In progress: finish the forward pass</span>
+      <span><span class="dot todo"></span>Not started: 9 stages</span>
+    </div>
+  </div>
+  <div class="grid3">
+    <div class="card"><span class="chip done">16 files read</span><p>Every script in the repo, from <code>phase1_foundations.py</code> to <code>test_rope_frequencies.py</code>.</p></div>
+    <div class="card"><span class="chip crit">9 review notes</span><p>One factual error in the README, two Qwen3-specific gaps that will break the real-weights test, and smaller fixes.</p></div>
+    <div class="card"><span class="chip info">7 instruments</span><p>Live calculators for memory, attention, GQA, RoPE, KV cache and decode speed. Change the numbers and watch them update.</p></div>
+  </div>
+</section>
+
+<!-- ============ ROADMAP ============ -->
+<section id="roadmap">
+  <div class="eyebrow">Roadmap</div>
+  <h2>Twelve stages from tensors to production</h2>
+  <p class="prose">An inference engineer makes trained models answer quickly, cheaply and reliably. The path runs from understanding one forward pass, through making it fast on real hardware, to serving many users at once. Click a stage to jump to it.</p>
+  <div class="road">
+    <a class="stage done" href="#tensors"><span class="num">01</span><div><h4>Foundations</h4><p>Tensor layout, dtypes and memory, linear projections, safetensors, loading Qwen3, tokenizer</p></div><span class="chip done">Done</span></a>
+    <a class="stage done" href="#rmsnorm"><span class="num">02</span><div><h4>Layer parts</h4><p>RMSNorm, profiling, attention, causal mask, multi-head, GQA, RoPE frequencies</p></div><span class="chip done">Done</span></a>
+    <a class="stage next" href="#finish"><span class="num">03</span><div><h4>Finish the forward pass</h4><p>RoPE layout match, QK-norm, SwiGLU MLP, one decoder layer, 28 layers, LM head, logits test</p></div><span class="chip next">In progress</span></a>
+    <a class="stage todo" href="#generation"><span class="num">04</span><div><h4>Generation and KV cache</h4><p>Sampling, your own generate loop, KV cache, prefill and decode, TTFT and TPOT</p></div><span class="chip todo">Not started</span></a>
+    <a class="stage todo" href="#performance"><span class="num">05</span><div><h4>Performance on hardware</h4><p>Memory bandwidth, roofline, Intel XPU, profiling the full model</p></div><span class="chip todo">Not started</span></a>
+    <a class="stage todo" href="#serving"><span class="num">06</span><div><h4>Serving systems</h4><p>Continuous batching, paged KV cache, prefix caching, chunked prefill, scheduling</p></div><span class="chip todo">Not started</span></a>
+    <a class="stage todo" href="#kernels"><span class="num">07</span><div><h4>Kernels</h4><p>FlashAttention, kernel fusion, Triton, torch.compile</p></div><span class="chip todo">Not started</span></a>
+    <a class="stage todo" href="#quant"><span class="num">08</span><div><h4>Quantization</h4><p>INT8, INT4, FP8, GPTQ and AWQ, KV cache quantization, quality checks</p></div><span class="chip todo">Not started</span></a>
+    <a class="stage todo" href="#decoding"><span class="num">09</span><div><h4>Decoding algorithms</h4><p>Speculative decoding, constrained and structured output</p></div><span class="chip todo">Not started</span></a>
+    <a class="stage todo" href="#scale"><span class="num">10</span><div><h4>Scale and long context</h4><p>Tensor, pipeline and expert parallelism, MoE, disaggregated serving, RoPE scaling</p></div><span class="chip todo">Not started</span></a>
+    <a class="stage todo" href="#production"><span class="num">11</span><div><h4>Production</h4><p>OpenAI-compatible API, SLOs, benchmarking, routing, observability, cost</p></div><span class="chip todo">Not started</span></a>
+    <a class="stage todo" href="#ecosystem"><span class="num">12</span><div><h4>Engines to know</h4><p>vLLM, SGLang, TensorRT-LLM, llama.cpp, OpenVINO, reading their source</p></div><span class="chip todo">Not started</span></a>
+  </div>
+</section>
+
+<!-- ============ TENSORS ============ -->
+<section id="tensors">
+  <div class="eyebrow">Stage 01 · Built so far</div>
+  <h2>Tensors, precision and memory</h2>
+  <div class="files"><code>phase1_foundations.py</code></div>
+
+  <div class="concept">
+    <header><h3>The layout every script uses</h3><span class="chip done">Covered</span></header>
+    <div class="prose">
+      <p>Activations inside a transformer have the shape <code>[batch, sequence length, hidden size]</code>. Batch is how many requests run together, sequence length is how many tokens each has, and hidden size is the length of each token's vector (1024 for Qwen3-0.6B). Attention later splits the last dimension into heads, giving <code>[batch, heads, seq, head_dim]</code>.</p>
+    </div>
+    <div class="why"><b>Why an inference engineer cares:</b> batch and sequence length are the two numbers a serving system changes at runtime. Almost every speed and memory question comes back to how those two dimensions grow.</div>
+  </div>
+
+  <div class="concept">
+    <header><h3>Linear projections are matrix multiplies</h3><span class="chip done">Covered</span></header>
+    <div class="formula">Y = X @ W.T        X: [B, S, in]   W: [out, in]   Y: [B, S, out]</div>
+    <div class="prose"><p>Query, Key, Value, the attention output and the three MLP projections are all this one operation. Over 95% of the weights in Qwen3-0.6B sit in these matrices. Your script checks the manual multiply against <code>F.linear</code>, which is the right habit: test each handwritten piece against a reference.</p></div>
+    <div class="why"><b>Why it matters:</b> each generated token must read every one of these weight matrices from memory. That single fact explains why decoding is slow, and why quantization and batching help (stage 05).</div>
+  </div>
+
+  <div class="figure" id="memcalc">
+    <div class="cap">Instrument 1 · Weight memory</div>
+    <p>Memory for the weights alone is parameters times bytes per parameter. The default is Qwen3-0.6B: 596M parameters with the embedding shared by the LM head.</p>
+    <div class="controls">
+      <label for="mc-params">Parameters (millions)<input id="mc-params" type="number" value="596" min="1" step="1"></label>
+      <label for="mc-dtype">Precision
+        <select id="mc-dtype">
+          <option value="4">FP32 (4 bytes)</option>
+          <option value="2" selected>BF16 / FP16 (2 bytes)</option>
+          <option value="1">INT8 / FP8 (1 byte)</option>
+          <option value="0.5">INT4 (0.5 bytes)</option>
+        </select></label>
+    </div>
+    <div class="readout">
+      <div class="stat"><b id="mc-out">1.19 GB</b><span>weights in memory</span></div>
+      <div class="stat"><b id="mc-fp32">2.38 GB</b><span>same model in FP32 (what your scripts load)</span></div>
+    </div>
+  </div>
+
+  <div class="concept">
+    <header><h3>FP32, FP16 and BF16</h3><span class="chip done">Covered</span></header>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Format</th><th>Bytes</th><th>Exponent bits</th><th>Mantissa bits</th><th>Use in inference</th></tr></thead>
+      <tbody>
+        <tr><td>FP32</td><td>4</td><td>8</td><td>23</td><td>Reference checks (your scripts), accumulators inside kernels</td></tr>
+        <tr><td>FP16</td><td>2</td><td>5</td><td>10</td><td>Fast, but a small range: large activations can overflow</td></tr>
+        <tr><td>BF16</td><td>2</td><td>8</td><td>7</td><td>Default for modern LLMs: FP32's range with half the bytes</td></tr>
+      </tbody>
+    </table></div>
+    <div class="why"><b>Why it matters:</b> you kept FP32 so handwritten math matches PyTorch exactly. That is correct for learning. Production runs BF16 or lower, and tolerances in your tests will need to loosen (about 1e-2 for BF16) once you switch.</div>
+  </div>
+</section>
+
+<!-- ============ LOADING ============ -->
+<section id="loading">
+  <div class="eyebrow">Stage 01 · Built so far</div>
+  <h2>Safe loading and the shape of Qwen3</h2>
+  <div class="files"><code>phase1_foundations.py</code><code>phase2_load_model.py</code><code>inspect_qwen3.py</code><code>inspect_rope_config.py</code></div>
+
+  <div class="concept">
+    <header><h3>Safetensors instead of pickle</h3><span class="chip done">Covered</span></header>
+    <div class="prose"><p><code>.bin</code> and <code>.pt</code> checkpoints are Python pickles, and loading a pickle can run any code its author put in it (CWE-502). Safetensors files hold only a JSON header and raw tensor bytes, so loading runs nothing, and the bytes can be memory-mapped without copying. With <code>trust_remote_code=False</code>, the model class also comes from the installed transformers library instead of the model repo.</p></div>
+    <div class="why"><b>Why it matters:</b> serving systems load third-party weights all day. Knowing the format is also the first step to writing your own loader in stage 03, where you read tensors by name straight from the safetensors file.</div>
+  </div>
+
+  <div class="concept">
+    <header><h3>Qwen3-0.6B at a glance</h3><span class="chip done">Covered</span></header>
+    <div class="grid2">
+      <dl class="kv">
+        <dt>Hidden size</dt><dd>1024</dd>
+        <dt>Layers</dt><dd>28</dd>
+        <dt>MLP size</dt><dd>3072</dd>
+        <dt>Query heads</dt><dd>16</dd>
+        <dt>KV heads</dt><dd>8 (GQA, 2 query heads per KV head)</dd>
+        <dt>Head dimension</dt><dd>128</dd>
+        <dt>Vocabulary</dt><dd>151,936</dd>
+        <dt>RoPE theta</dt><dd>1,000,000</dd>
+      </dl>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Where the 596M parameters sit</th><th>Count</th></tr></thead>
+        <tbody>
+          <tr><td>Token embedding (shared with LM head)</td><td>155.6M</td></tr>
+          <tr><td>Attention per layer: q 1024→2048, k and v 1024→1024, o 2048→1024</td><td>6.3M</td></tr>
+          <tr><td>MLP per layer: gate, up 1024→3072, down 3072→1024</td><td>9.4M</td></tr>
+          <tr><td>All 28 layers</td><td>440.4M</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+    <p class="prose">Notice that 16 heads × 128 = 2048, twice the hidden size. Qwen3 sets head dimension independently. That detail matters in the review notes below.</p>
+  </div>
+
+  <div class="concept">
+    <header><h3>Tokenizer, chat template and a first speed number</h3><span class="chip done">Covered</span></header>
+    <div class="prose"><p>The tokenizer turns text into IDs and back. <code>apply_chat_template</code> wraps messages in the special tokens the instruct model was trained on; skip it and output quality drops sharply. Your generation run prints one tokens-per-second figure. In stage 04 you will split that figure into its two parts, because a single number hides where the time goes.</p></div>
+  </div>
+</section>
+
+<!-- ============ RMSNORM ============ -->
+<section id="rmsnorm">
+  <div class="eyebrow">Stage 02 · Built so far</div>
+  <h2>RMSNorm and your first profile</h2>
+  <div class="files"><code>RMSNorm.py</code><code>perfetto.py</code></div>
+  <div class="concept">
+    <header><h3>RMSNorm</h3><span class="chip done">Verified against Hugging Face</span></header>
+    <div class="formula">y = x * rsqrt(mean(x²) + eps) * weight</div>
+    <div class="prose"><p>RMSNorm rescales each token's vector to a steady size without subtracting the mean, which is cheaper than LayerNorm and works as well. Each Qwen3 layer runs it twice (before attention and before the MLP), plus once after the last layer. Your version matches Hugging Face to within 1e-5.</p></div>
+    <div class="why"><b>Why it matters:</b> RMSNorm does very little maths per byte it reads, so it is limited by memory speed, not compute. It is the classic first kernel to fuse (stage 07), and your profile already shows it as three separate operations: square-and-mean, rsqrt-multiply, and scale.</div>
+  </div>
+  <div class="concept">
+    <header><h3>Reading a profiler trace</h3><span class="chip done">Covered</span></header>
+    <div class="prose"><p><code>perfetto.py</code> warms up, labels regions with <code>record_function</code>, and exports a trace for ui.perfetto.dev. The warm-up and labelling are what professionals do. What to look for next time: how many separate operations each RMSNorm launches, how long the gaps between them are, and how the custom version compares with the library one at the same shape.</p></div>
+  </div>
+</section>
+
+<!-- ============ ATTENTION ============ -->
+<section id="attention">
+  <div class="eyebrow">Stage 02 · Built so far</div>
+  <h2>Attention</h2>
+  <div class="files"><code>test_attention.py</code></div>
+  <div class="concept">
+    <header><h3>Scaled dot-product attention</h3><span class="chip done">Covered</span></header>
+    <div class="formula">scores  = Q @ K.T / sqrt(head_dim)
+weights = softmax(scores)
+output  = weights @ V</div>
+    <div class="prose"><p>Each token asks a question (its Query), every token offers a label (its Key), and the match between them decides how much of each token's content (its Value) to mix in. Dividing by the square root of the head size keeps scores from growing with vector length, which would make the softmax pick one token and ignore the rest.</p></div>
+  </div>
+
+  <div class="figure" id="attn">
+    <div class="cap">Instrument 2 · Your test_attention.py, live</div>
+    <p>The keys and values are the ones in your script: "The" = [1, 0], "cat" = [0, 1], "milk" = [1, 1]. Change the query and watch the weights shift.</p>
+    <div class="controls">
+      <label for="aq0">Query[0] <input id="aq0" type="range" min="-3" max="3" step="0.1" value="1"></label>
+      <label for="aq1">Query[1] <input id="aq1" type="range" min="-3" max="3" step="0.1" value="1"></label>
+      <label for="ascale"><span><input id="ascale" type="checkbox" checked> Divide by sqrt(head_dim)</span></label>
+    </div>
+    <div class="readout"><div class="stat"><b id="aq-show">[1.0, 1.0]</b><span>query</span></div><div class="stat"><b id="aout">[7.52, 10.00]</b><span>attention output</span></div></div>
+    <div class="bars" id="abars"></div>
+    <p style="font-size:.88rem;color:var(--muted)">At the default query the weights are 0.248, 0.248 and 0.504, the same numbers your script prints. Turn off scaling and push the query to 3 to see the softmax collapse onto one token.</p>
+  </div>
+</section>
+
+<!-- ============ MASK ============ -->
+<section id="mask">
+  <div class="eyebrow">Stage 02 · Built so far</div>
+  <h2>The causal mask</h2>
+  <div class="files"><code>test_causal_mask.py</code></div>
+  <div class="concept">
+    <header><h3>No looking ahead</h3><span class="chip done">Covered</span></header>
+    <div class="prose"><p>A language model predicts the next token, so token <i>i</i> may only attend to tokens 0 to <i>i</i>. Setting future scores to −inf before the softmax makes their weights exactly zero. <code>torch.triu(..., diagonal=1)</code> builds that upper-triangle mask.</p></div>
+    <div class="grid2">
+      <div><div class="controls"><label for="mlen">Sequence length <input id="mlen" type="range" min="2" max="8" value="5"></label></div><div class="mask" id="maskgrid" style="margin-top:12px" aria-label="Causal mask grid"></div></div>
+      <div class="prose"><p>Rows are queries, columns are keys. Blue cells are allowed, red cells are masked.</p><p>Look at the last row. During generation you only ever compute that row, for the newest token, and it may attend to everything before it. That observation is the whole idea behind the KV cache in stage 04: the earlier rows' keys and values never change, so you store them instead of recomputing them.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GQA ============ -->
+<section id="gqa">
+  <div class="eyebrow">Stage 02 · Built so far</div>
+  <h2>Multi-head attention and grouped-query attention</h2>
+  <div class="files"><code>test_multihead.py</code><code>test_gqa.py</code></div>
+  <div class="concept">
+    <header><h3>Heads, then sharing heads</h3><span class="chip done">Covered</span></header>
+    <div class="prose">
+      <p>Multi-head attention runs several smaller attentions side by side, each with its own projection slice, so different heads can track different relationships. The heads are concatenated and mixed by <code>o_proj</code>.</p>
+      <p>Grouped-query attention (GQA) keeps many query heads but fewer key/value heads. Several query heads read the same K and V. Your script repeats K and V with <code>repeat_interleave</code> so the shapes line up, which is exactly what Hugging Face's <code>repeat_kv</code> does.</p>
+    </div>
+  </div>
+  <div class="figure" id="gqafig">
+    <div class="cap">Instrument 3 · Who shares with whom</div>
+    <div class="controls">
+      <label for="gq">Query heads <select id="gq"><option>4</option><option>8</option><option selected>16</option><option>32</option></select></label>
+      <label for="gk">KV heads <select id="gk"><option>1</option><option>2</option><option>4</option><option selected>8</option><option>16</option></select></label>
+    </div>
+    <div class="heads" id="gqaviz"></div>
+    <div class="readout"><div class="stat"><b id="gqa-save">2×</b><span>smaller KV cache than full multi-head</span></div><div class="stat"><b id="gqa-kind">GQA</b><span>attention type</span></div></div>
+    <p style="font-size:.88rem;color:var(--muted)">Qwen3-0.6B is the default: 16 query heads, 8 KV heads. One KV head is called multi-query attention (MQA); equal counts is plain multi-head attention (MHA).</p>
+  </div>
+  <div class="concept">
+    <div class="why"><b>Why it matters:</b> GQA exists for inference. Training cost barely changes, but the KV cache that every serving system stores per token shrinks by the sharing factor. Fewer bytes per token means more users fit in memory and each decode step reads less.</div>
+  </div>
+</section>
+
+<!-- ============ ROPE ============ -->
+<section id="rope">
+  <div class="eyebrow">Stage 02 · Built so far</div>
+  <h2>Rotary position embeddings (RoPE)</h2>
+  <div class="files"><code>test_rope_basic.py</code><code>test_rope_positions.py</code><code>test_rope_frequencies.py</code><code>inspect_rope_config.py</code></div>
+  <div class="concept">
+    <header><h3>Position as rotation</h3><span class="chip done">Frequencies covered</span><span class="chip next">Layout match open</span></header>
+    <div class="formula">freq_i  = theta^(-2i / head_dim)     i = 0 … 63
+angle   = position × freq_i
+[a, b] → [a·cos − b·sin,  a·sin + b·cos]</div>
+    <div class="prose"><p>Attention alone cannot tell token order. RoPE rotates each pair of dimensions in Q and K by an angle proportional to the token's position. When two rotated vectors are compared with a dot product, only the difference in their angles survives, so the score depends on how far apart the tokens are, not on where they sit.</p></div>
+  </div>
+  <div class="figure" id="ropefig">
+    <div class="cap">Instrument 4 · One pair spinning</div>
+    <p>Your vector [3, 4], rotated with Qwen3's real settings (theta 1,000,000, head dimension 128).</p>
+    <div class="controls">
+      <label for="rpos">Position <input id="rpos" type="range" min="0" max="64" value="1"></label>
+      <label for="rpair">Pair index i <input id="rpair" type="range" min="0" max="63" value="0"></label>
+    </div>
+    <div class="grid2">
+      <canvas id="ropecanvas" width="320" height="320" aria-label="Rotation of the vector"></canvas>
+      <div class="readout" style="align-content:start">
+        <div class="stat"><b id="r-freq">1.000</b><span>radians per token for this pair</span></div>
+        <div class="stat"><b id="r-angle">57.3°</b><span>angle at this position</span></div>
+        <div class="stat"><b id="r-wave">6.3</b><span>tokens for one full turn</span></div>
+        <div class="stat"><b id="r-vec">[−1.75, 4.69]</b><span>rotated vector</span></div>
+      </div>
+    </div>
+    <canvas id="freqcanvas" width="760" height="240" aria-label="Frequency for each pair, log scale"></canvas>
+    <p style="font-size:.88rem;color:var(--muted)">Pair 0 turns a full radian per token and repeats every 6 tokens, so it encodes fine, local order. Pair 63 needs about 5 million tokens for one turn, so it changes very slowly and encodes long-range order. See review note 1: the README states this the other way round.</p>
+  </div>
+</section>
+
+<!-- ============ REVIEW ============ -->
+<section id="review">
+  <div class="eyebrow">Code review</div>
+  <h2>Review notes on the repo</h2>
+  <p class="prose">The work is careful: every handwritten piece is checked against a reference, model loading is safe, and the README explains each step. These notes are what to fix before stage 03, roughly in order of importance.</p>
+  <div class="review">
+
+    <div class="issue crit"><div class="stripe"></div><div class="body">
+      <header><span class="chip crit">Wrong fact</span><h4>The README has RoPE's slow and fast pairs reversed</h4></header>
+      <p>README section 4 says early pairs spin slowly and later pairs spin faster. With <code>freq = theta^(-i/head_dim)</code>, pair 0 has frequency 1.0 (the fastest) and the last pair about 1.2e-6 (the slowest). Your own script prints this: the first frequency is exactly 1. Early pairs carry local order; later pairs carry long-range order. An interviewer reading the README would catch this.</p>
+    </div></div>
+
+    <div class="issue crit"><div class="stripe"></div><div class="body">
+      <header><span class="chip crit">Will break on real weights</span><h4>Qwen3's head dimension is not hidden size ÷ heads</h4></header>
+      <p><code>test_multihead.py</code> and <code>test_gqa.py</code> compute <code>head_dim = hidden_dim // num_heads</code>. For Qwen3-0.6B that gives 64, but the real value is 128, so <code>q_proj</code> maps 1024 to 2048 and <code>o_proj</code> maps 2048 back to 1024. Read <code>config.head_dim</code> and size the projections from it.</p>
+<pre><code>head_dim = cfg.head_dim                                   <span class="c"># 128, not 1024 // 16</span>
+q_proj = nn.Linear(cfg.hidden_size, cfg.num_attention_heads * head_dim, bias=<span class="k">False</span>)   <span class="c"># 1024 -> 2048</span>
+k_proj = nn.Linear(cfg.hidden_size, cfg.num_key_value_heads * head_dim, bias=<span class="k">False</span>)   <span class="c"># 1024 -> 1024</span>
+o_proj = nn.Linear(cfg.num_attention_heads * head_dim, cfg.hidden_size, bias=<span class="k">False</span>)   <span class="c"># 2048 -> 1024</span></code></pre>
+    </div></div>
+
+    <div class="issue crit"><div class="stripe"></div><div class="body">
+      <header><span class="chip crit">Missing piece</span><h4>Qwen3 normalises Q and K before RoPE (QK-norm)</h4></header>
+      <p>Qwen3's attention has two extra RMSNorms, <code>q_norm</code> and <code>k_norm</code>, applied to each head's 128-dim vector after projection and before the rotation. Printing <code>layers[0].self_attn</code> in <code>inspect_qwen3.py</code> shows them. Your attention will not match Hugging Face without them, and the README's "what is still open" list does not mention them. Good news: your RMSNorm class already does the job.</p>
+<pre><code>q = q_proj(x).view(B, S, n_q, head_dim)
+q = q_norm(q).transpose(<span class="n">1</span>, <span class="n">2</span>)       <span class="c"># RMSNorm over head_dim, per head</span>
+k = k_norm(k_proj(x).view(B, S, n_kv, head_dim)).transpose(<span class="n">1</span>, <span class="n">2</span>)
+q, k = apply_rope(q, k, cos, sin)     <span class="c"># rotation comes after the norm</span></code></pre>
+    </div></div>
+
+    <div class="issue"><div class="stripe"></div><div class="body">
+      <header><span class="chip next">Known gap</span><h4>Match the rotate_half layout</h4></header>
+      <p>You spotted this one in the README: your script pairs dimension 0 with 1, while Hugging Face pairs dimension <i>j</i> with <i>j</i> + 64. Same frequencies, different layout. Switch to the half-split form and the rotated vectors will match exactly.</p>
+<pre><code><span class="k">def</span> rotate_half(x):
+    x1, x2 = x[..., : x.shape[-<span class="n">1</span>] // <span class="n">2</span>], x[..., x.shape[-<span class="n">1</span>] // <span class="n">2</span> :]
+    <span class="k">return</span> torch.cat((-x2, x1), dim=-<span class="n">1</span>)
+
+freqs = torch.outer(positions, inv_freq)          <span class="c"># [S, 64]</span>
+emb = torch.cat((freqs, freqs), dim=-<span class="n">1</span>)          <span class="c"># [S, 128]: same angle for j and j+64</span>
+q_rot = q * emb.cos() + rotate_half(q) * emb.sin()</code></pre>
+    </div></div>
+
+    <div class="issue"><div class="stripe"></div><div class="body">
+      <header><span class="chip next">Precision</span><h4>RMSNorm only matches in FP32</h4></header>
+      <p>Hugging Face's RMSNorm converts the input to FP32, normalises, converts back, then multiplies by the weight. Your version stays in the input dtype. That is identical in FP32, but in BF16 the results will drift. Copy the upcast before you move to BF16.</p>
+<pre><code><span class="k">def</span> forward(self, x):
+    dtype = x.dtype
+    x = x.float()
+    x = x * torch.rsqrt(x.pow(<span class="n">2</span>).mean(-<span class="n">1</span>, keepdim=<span class="k">True</span>) + self.eps)
+    <span class="k">return</span> self.weight * x.to(dtype)</code></pre>
+    </div></div>
+
+    <div class="issue"><div class="stripe"></div><div class="body">
+      <header><span class="chip next">Your hardware</span><h4>Device detection only knows CUDA</h4></header>
+      <p><code>phase1_foundations.py</code>, <code>phase2_load_model.py</code> and <code>perfetto.py</code> check <code>torch.cuda</code> and otherwise fall back to CPU, so your Intel GPU is never used. PyTorch exposes Intel GPUs as <code>xpu</code>. Put one helper in a shared module and use it everywhere, including the profiler.</p>
+<pre><code><span class="k">def</span> pick_device() -> str:
+    <span class="k">if</span> torch.cuda.is_available(): <span class="k">return</span> <span class="s">"cuda"</span>
+    <span class="k">if</span> hasattr(torch, <span class="s">"xpu"</span>) <span class="k">and</span> torch.xpu.is_available(): <span class="k">return</span> <span class="s">"xpu"</span>
+    <span class="k">return</span> <span class="s">"cpu"</span>
+
+<span class="k">def</span> sync(device):                   <span class="c"># call before reading a timer</span>
+    <span class="k">if</span> device == <span class="s">"cuda"</span>: torch.cuda.synchronize()
+    <span class="k">elif</span> device == <span class="s">"xpu"</span>: torch.xpu.synchronize()
+
+<span class="c"># profiler: add ProfilerActivity.XPU when device == "xpu"</span></code></pre>
+    </div></div>
+
+    <div class="issue"><div class="stripe"></div><div class="body">
+      <header><span class="chip next">Measurement</span><h4>One tokens-per-second number hides prefill</h4></header>
+      <p><code>run_simple_generation</code> divides new tokens by total time, which includes reading the prompt, any first-call setup, and 64 decode steps. Add one warm-up call, then report time to first token and time per output token separately. A <code>TextIteratorStreamer</code> or a <code>max_new_tokens=1</code> run gives you the first number. This is the habit stage 04 builds on.</p>
+    </div></div>
+
+    <div class="issue info"><div class="stripe"></div><div class="body">
+      <header><span class="chip info">Structure</span><h4>Turn the print scripts into tests</h4></header>
+      <p>The <code>test_*.py</code> files print shapes but assert nothing, so they cannot fail. Compare each against PyTorch's own attention, which also supports GQA directly, and run them with pytest.</p>
+<pre><code>ref = F.scaled_dot_product_attention(Q, K, V, is_causal=<span class="k">True</span>, enable_gqa=<span class="k">True</span>)
+torch.testing.assert_close(my_output, ref)</code></pre>
+      <p>Also move <code>CustomRMSNorm</code>, attention and RoPE into one package (for example <code>engine/layers.py</code>) instead of redefining them per script. Stage 03 needs them importable.</p>
+    </div></div>
+
+    <div class="issue info"><div class="stripe"></div><div class="body">
+      <header><span class="chip info">Presentation</span><h4>Small things a recruiter sees</h4></header>
+      <p>The repository name has a typo ("inferenec"); rename it to <code>learning_inference</code> before you link it from a resume (GitHub redirects the old URL). <code>RMSNorm.py</code> and <code>perfetto.py</code> still load Qwen2.5-1.5B; switch them to Qwen3-0.6B so the whole repo uses one model and one download. Check <code>config.tie_word_embeddings</code> when you build the LM head: if it is true, the head reuses the embedding matrix.</p>
+    </div></div>
+  </div>
+</section>
+
+<!-- ============ FINISH ============ -->
+<section id="finish">
+  <div class="eyebrow">Stage 03 · Next</div>
+  <h2>Finish the forward pass</h2>
+  <p class="prose">Goal: a model built only from your own modules that loads Qwen3-0.6B's safetensors and produces the same logits as Hugging Face. Every later optimisation is checked against this test, so it is the most valuable file you will write.</p>
+  <div class="module">
+    <div class="meta"><span class="chip next">Next up</span><span class="chip info">About 4 sessions</span></div>
+    <h3>Steps, in order</h3>
+    <ul>
+      <li><b>RoPE match.</b> Switch to <code>rotate_half</code> and compare against <code>Qwen3RotaryEmbedding</code> plus <code>apply_rotary_pos_emb</code>.</li>
+      <li><b>Full attention block.</b> q, k, v projections with head_dim 128, QK-norm, RoPE, GQA, causal mask, o_proj. Copy weights from <code>layers[0].self_attn</code> and compare outputs.</li>
+      <li><b>SwiGLU MLP.</b> <code>down(silu(gate(x)) * up(x))</code> with sizes 1024 → 3072 → 1024. The gate decides, element by element, how much of the up projection passes through.</li>
+      <li><b>Decoder layer.</b> Two residual branches: <code>h = x + attn(norm1(x))</code>, then <code>out = h + mlp(norm2(h))</code>.</li>
+      <li><b>Whole model.</b> Embedding, 28 layers, final RMSNorm, LM head (tied to the embedding).</li>
+      <li><b>Weight loader.</b> Read tensors by name with <code>safetensors.safe_open</code> and map names such as <code>model.layers.0.self_attn.q_proj.weight</code> onto your modules, without calling <code>AutoModelForCausalLM</code>.</li>
+      <li><b>Logits test.</b> Same prompt through both models; assert the maximum logit difference is below 1e-4 in FP32 and that the top-1 token matches at every position.</li>
+    </ul>
+<pre><code><span class="k">class</span> MLP(nn.Module):
+    <span class="k">def</span> __init__(self, d=<span class="n">1024</span>, f=<span class="n">3072</span>):
+        super().__init__()
+        self.gate_proj = nn.Linear(d, f, bias=<span class="k">False</span>)
+        self.up_proj   = nn.Linear(d, f, bias=<span class="k">False</span>)
+        self.down_proj = nn.Linear(f, d, bias=<span class="k">False</span>)
+    <span class="k">def</span> forward(self, x):
+        <span class="k">return</span> self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x))</code></pre>
+    <div class="build"><b>Done when:</b> <code>pytest tests/test_logits.py</code> passes on CPU and on XPU, and your model completes a sentence with greedy decoding that matches Hugging Face token for token.</div>
+    <p class="ask"><b>Interview check:</b> Why does SwiGLU need three matrices when a classic MLP has two, and how does Qwen keep the parameter count similar? (The hidden size is chosen smaller, about 3× instead of 4× the model width.)</p>
+  </div>
+</section>
+
+<!-- ============ GENERATION ============ -->
+<section id="generation">
+  <div class="eyebrow">Stage 04</div>
+  <h2>Generation and the KV cache</h2>
+  <div class="module">
+    <div class="meta"><span class="chip todo">Not started</span></div>
+    <h3>Sampling and your own generate loop</h3>
+    <ul>
+      <li>Greedy decoding, temperature, top-k, top-p (nucleus), repetition penalty, stop tokens.</li>
+      <li>Streaming detokenization: one character can span several tokens, so decode incrementally and only print complete text.</li>
+      <li>Chat templates and the end-of-turn token that tells the loop to stop.</li>
+    </ul>
+    <div class="build"><b>Build:</b> a <code>generate()</code> on your own model that reruns the full sequence each step. Time it as the output grows; it slows down with every token, which motivates the cache.</div>
+  </div>
+  <div class="module">
+    <div class="meta"><span class="chip todo">Not started</span><span class="chip info">Most important concept in the field</span></div>
+    <h3>KV cache, prefill and decode</h3>
+    <div class="prose"><p>Keys and values for past tokens never change, so you store them. Generation then has two phases. <b>Prefill</b> processes the whole prompt in one pass: large matrix multiplies, limited by compute, and it sets the time to first token (TTFT). <b>Decode</b> produces one token per step, reusing the cache: small multiplies that must still read every weight, limited by memory bandwidth, and it sets the time per output token (TPOT).</p></div>
+    <div class="formula">KV bytes per token = 2 (K and V) × layers × kv_heads × head_dim × bytes per value</div>
+    <div class="figure" id="kvcalc" style="border-left-color:var(--next)">
+      <div class="cap" style="color:var(--next)">Instrument 5 · KV cache size</div>
+      <div class="controls">
+        <label for="kv-l">Layers<input id="kv-l" type="number" value="28" min="1"></label>
+        <label for="kv-h">KV heads<input id="kv-h" type="number" value="8" min="1"></label>
+        <label for="kv-d">Head dim<input id="kv-d" type="number" value="128" min="1"></label>
+        <label for="kv-b">Cache precision<select id="kv-b"><option value="2" selected>BF16 (2 B)</option><option value="1">FP8 / INT8 (1 B)</option><option value="4">FP32 (4 B)</option></select></label>
+        <label for="kv-ctx">Context tokens<input id="kv-ctx" type="number" value="4096" min="1"></label>
+        <label for="kv-n">Concurrent requests<input id="kv-n" type="number" value="8" min="1"></label>
+      </div>
+      <div class="readout">
+        <div class="stat"><b id="kv-tok">112 KiB</b><span>per token</span></div>
+        <div class="stat"><b id="kv-req">448 MiB</b><span>per request at this context</span></div>
+        <div class="stat"><b id="kv-all">3.50 GiB</b><span>for all requests</span></div>
+      </div>
+      <p style="font-size:.88rem;color:var(--muted)">Defaults are Qwen3-0.6B. With 8 requests at 4k context the cache is about three times the size of the BF16 weights. On long contexts the cache, not the model, is what fills memory.</p>
+    </div>
+    <div class="build"><b>Build:</b> a preallocated cache tensor per layer, separate <code>prefill()</code> and <code>decode_step()</code> functions, and a benchmark script that records TTFT, TPOT and tokens per second to JSON. Plot naive against cached generation.</div>
+    <p class="ask"><b>Interview check:</b> Your model has 28 layers, 8 KV heads of size 128, and stores the cache in BF16. How much memory do 32 users at 8k context need? (About 28 GiB.)</p>
+  </div>
+</section>
+
+<!-- ============ PERFORMANCE ============ -->
+<section id="performance">
+  <div class="eyebrow">Stage 05</div>
+  <h2>Performance on real hardware</h2>
+  <div class="module">
+    <div class="meta"><span class="chip todo">Not started</span></div>
+    <h3>Memory bandwidth and the roofline</h3>
+    <div class="prose"><p>Every operation does some maths (FLOPs) and moves some bytes. Their ratio, the arithmetic intensity, decides whether the chip waits on memory or on compute. A decode step at batch size 1 does about 2 FLOPs per weight while reading 2 bytes per weight: intensity near 1, far below what any GPU needs to stay busy. That is why batching raises throughput almost for free: 16 users share one read of the weights.</p></div>
+    <div class="figure" id="floor" style="border-left-color:var(--next)">
+      <div class="cap" style="color:var(--next)">Instrument 6 · Decode speed floor</div>
+      <p>The fastest possible decode at batch size 1 reads all weights once per token. Measure your real bandwidth with a large tensor copy and put it here.</p>
+      <div class="controls">
+        <label for="fl-gb">Weights (GB)<input id="fl-gb" type="number" value="1.19" step="0.01" min="0.01"></label>
+        <label for="fl-bw">Memory bandwidth (GB/s)<input id="fl-bw" type="number" value="100" min="1"></label>
+        <label for="fl-eff">Achieved fraction<input id="fl-eff" type="number" value="0.7" step="0.05" min="0.05" max="1"></label>
+      </div>
+      <div class="readout">
+        <div class="stat"><b id="fl-ms">17.0 ms</b><span>per token, at best</span></div>
+        <div class="stat"><b id="fl-tps">59</b><span>tokens per second, at best</span></div>
+      </div>
+      <p style="font-size:.88rem;color:var(--muted)">100 GB/s is a rough figure for a laptop with shared memory; an Arc discrete card is several times higher. If your measured TPOT is far above this floor, the time is going to overhead such as Python, kernel launches or extra copies.</p>
+    </div>
+    <ul>
+      <li>Profile the full forward pass and sort operations by time: expect the linear layers to dominate decode and attention to grow with context.</li>
+      <li>Learn what the profiler shows on XPU, and why you must synchronise before reading a timer on any GPU.</li>
+      <li>Understand the hardware words: Xe cores and XMX matrix units on Intel; SMs and tensor cores on NVIDIA; on-chip SRAM against main memory (HBM or GDDR).</li>
+    </ul>
+    <div class="build"><b>Build:</b> <code>bench/bandwidth.py</code> that measures GB/s on your device, then compare your stage 04 TPOT with the floor and explain the gap in the README.</div>
+  </div>
+</section>
+
+<!-- ============ SERVING ============ -->
+<section id="serving">
+  <div class="eyebrow">Stage 06</div>
+  <h2>Serving systems</h2>
+  <div class="grid2">
+    <div class="module">
+      <div class="meta"><span class="chip todo">Not started</span></div>
+      <h3>Continuous batching</h3>
+      <p>Static batching waits for the longest request and pads the rest. Continuous batching, from the Orca paper, rebuilds the batch at every decode step: finished requests leave, waiting ones join. A scheduler keeps waiting, running and finished queues and decides who runs next.</p>
+      <div class="build"><b>Build:</b> a scheduler and engine loop that serve requests of different lengths together, plus a load generator. Plot throughput against concurrent users.</div>
+    </div>
+    <div class="module">
+      <div class="meta"><span class="chip todo">Not started</span></div>
+      <h3>Paged KV cache</h3>
+      <p>Reserving a full-length cache per request wastes most of it. PagedAttention (the vLLM paper) splits the cache into fixed-size blocks, like operating-system memory pages, with a block table per request. Blocks are allocated as tokens arrive and freed when a request ends.</p>
+      <div class="build"><b>Build:</b> a block manager with reference counts, and attention that reads K and V through the block table. Report how many more requests fit.</div>
+    </div>
+    <div class="module">
+      <div class="meta"><span class="chip todo">Not started</span><span class="chip info">Good fit for agent work</span></div>
+      <h3>Prefix caching</h3>
+      <p>Many requests start the same way: a system prompt, tool definitions, earlier turns of a chat. SGLang's RadixAttention keeps cached blocks in a radix tree keyed by token sequence, so a new request reuses the longest matching prefix and only prefills the rest. Least-recently-used blocks are evicted first.</p>
+      <div class="build"><b>Build:</b> a radix-tree cache and a synthetic agent trace with a shared 2k-token system prompt. Measure TTFT with and without it. This is the strongest single result you can put on a resume.</div>
+    </div>
+    <div class="module">
+      <div class="meta"><span class="chip todo">Not started</span></div>
+      <h3>Chunked prefill and preemption</h3>
+      <p>A long prompt can stall every other user's decode. Chunked prefill splits it into pieces that share steps with decoding requests. When memory runs out, the scheduler preempts a request and either swaps its cache out or recomputes it later.</p>
+      <div class="build"><b>Build:</b> chunked prefill with a token budget per step; measure p99 TPOT while a long prompt arrives.</div>
+    </div>
+  </div>
+  <p class="ask module"><b>Interview check:</b> Why does continuous batching help throughput but can hurt the latency of an individual request? What does chunked prefill trade?</p>
+</section>
+
+<!-- ============ KERNELS ============ -->
+<section id="kernels">
+  <div class="eyebrow">Stage 07</div>
+  <h2>Kernels</h2>
+  <div class="module">
+    <div class="meta"><span class="chip todo">Not started</span></div>
+    <h3>Why kernels, and which ones</h3>
+    <ul>
+      <li><b>Fusion.</b> Your RMSNorm profile shows three operations, each reading and writing the whole tensor. One fused kernel reads once and writes once. The same applies to RoPE, SiLU-times-up, and residual-plus-norm.</li>
+      <li><b>FlashAttention.</b> Computes attention in tiles held in fast on-chip memory, with a running (online) softmax, so the full sequence-by-sequence score matrix is never written out. Prefill gets much faster and memory drops from quadratic to linear in sequence length.</li>
+      <li><b>Paged decode attention.</b> Reads K and V through a block table for many requests at once. This is the kernel behind stage 06.</li>
+      <li><b>Launch overhead.</b> At batch size 1, a decode step is hundreds of tiny kernels; the gaps between them can cost more than the maths. torch.compile and graph capture remove much of it.</li>
+    </ul>
+    <h3>Tools on your Intel GPU</h3>
+    <ul>
+      <li><b>Triton</b> lets you write GPU kernels in Python. Intel's XPU backend for Triton is bundled with recent PyTorch XPU builds, so the same kernel source runs on Intel and NVIDIA.</li>
+      <li><b>torch.compile</b> generates fused Triton kernels for you on XPU. Start here and read the code it produces.</li>
+      <li><b>SYCL</b> is Intel's C++ GPU language, used by llama.cpp's Intel backend. Worth reading, not required to start.</li>
+    </ul>
+    <div class="build"><b>Build:</b> a fused RMSNorm in Triton, tested against your PyTorch version; then torch.compile on the decode step with a profile before and after. Stretch: a simple tiled attention kernel with online softmax.</div>
+    <p class="ask"><b>Interview check:</b> Walk through the online softmax trick. How can you compute softmax over a row you only see one tile at a time?</p>
+  </div>
+</section>
+
+<!-- ============ QUANT ============ -->
+<section id="quant">
+  <div class="eyebrow">Stage 08</div>
+  <h2>Quantization</h2>
+  <div class="module">
+    <div class="meta"><span class="chip todo">Not started</span></div>
+    <div class="prose"><p>Storing weights in fewer bits means fewer bytes per decode step, and decode speed tracks bytes read. Instrument 1 shows the memory effect: Qwen3-0.6B drops from 1.19 GB in BF16 to about 0.3 GB in INT4.</p></div>
+    <ul>
+      <li><b>Scales.</b> <code>w ≈ scale × int_value</code>. Per-tensor, per-channel and group-wise scales (one scale per 32 to 128 weights) trade accuracy against overhead.</li>
+      <li><b>Weight-only quantization</b> (INT8 or INT4 weights, BF16 maths) helps decode most. <b>Weight and activation quantization</b> (W8A8, FP8) also speeds up prefill on hardware with low-precision matrix units.</li>
+      <li><b>GPTQ</b> and <b>AWQ</b> quantize after training using a small calibration set, choosing roundings or scales that protect the weights that matter most.</li>
+      <li><b>KV cache quantization</b> (FP8 or INT8) halves instrument 5's numbers and fits twice the users.</li>
+      <li><b>Measure quality.</b> Perplexity on held-out text and a small task evaluation before and after. A fast model that answers worse is not a win.</li>
+    </ul>
+    <div class="build"><b>Build:</b> your own INT8 weight-only linear layer with per-channel scales; a table of memory, TPOT and perplexity for BF16 and INT8. Stretch: INT4 through torchao, which supports Intel GPUs.</div>
+    <p class="ask"><b>Interview check:</b> Why do outliers in activations make INT8 activation quantization hard, and what do methods like SmoothQuant do about it?</p>
+  </div>
+</section>
+
+<!-- ============ DECODING ============ -->
+<section id="decoding">
+  <div class="eyebrow">Stage 09</div>
+  <h2>Decoding algorithms</h2>
+  <div class="grid2">
+    <div class="module">
+      <div class="meta"><span class="chip todo">Not started</span></div>
+      <h3>Speculative decoding</h3>
+      <p>Decode is limited by reading weights, so checking 5 tokens costs about the same as producing 1. A cheap draft proposes several tokens; the main model verifies them in one pass and keeps the longest accepted run. A rejection-sampling rule keeps the output distribution identical to the main model's.</p>
+      <ul>
+        <li>Draft from a smaller model of the same family (Qwen3 has several sizes).</li>
+        <li>Prompt lookup: draft by copying n-grams from the prompt. No second model; good for summarising and for agents quoting tool output.</li>
+        <li>Know the names: Medusa heads, EAGLE.</li>
+      </ul>
+      <div class="build"><b>Build:</b> prompt-lookup speculation with acceptance rate and speedup reported.</div>
+    </div>
+    <div class="module">
+      <div class="meta"><span class="chip todo">Not started</span></div>
+      <h3>Constrained and structured output</h3>
+      <p>Turn a JSON schema or grammar into a state machine and, at every step, mask the logits of tokens that would break it. The model can then only produce valid JSON tool calls. Libraries such as Outlines and XGrammar do this efficiently by precomputing which tokens are allowed in each state.</p>
+      <div class="build"><b>Build:</b> schema-constrained tool calls on your engine; report the share of valid outputs with and without the mask, and the per-token cost of masking.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCALE ============ -->
+<section id="scale">
+  <div class="eyebrow">Stage 10</div>
+  <h2>Scale and long context</h2>
+  <div class="module">
+    <div class="meta"><span class="chip todo">Not started</span><span class="chip info">Mostly theory on one GPU</span></div>
+    <ul>
+      <li><b>Tensor parallelism.</b> Split each weight matrix across GPUs; all GPUs work on every token and exchange partial results (all-reduce) twice per layer. Needs fast links between GPUs.</li>
+      <li><b>Pipeline parallelism.</b> Put different layers on different GPUs; requests flow through like an assembly line. Less communication, more latency.</li>
+      <li><b>Mixture of experts and expert parallelism.</b> Many MLPs ("experts") per layer, with a router choosing a few per token. Total parameters are large but each token uses a small part. Experts are spread across GPUs. Qwen3 has MoE variants worth reading.</li>
+      <li><b>Disaggregated serving.</b> Run prefill and decode on separate machines, because one is compute-bound and the other memory-bound, and move the KV cache between them.</li>
+      <li><b>Long context.</b> Stretching RoPE beyond the training length (position interpolation, NTK scaling, YaRN). Your <code>inspect_rope_config.py</code> already prints <code>rope_scaling</code>; this is what that field controls. Also sliding-window attention and why long contexts make attention, not the MLP, the bottleneck.</li>
+      <li><b>Multi-LoRA serving.</b> One base model with many small fine-tuned adapters swapped per request.</li>
+    </ul>
+    <div class="build"><b>Build:</b> simulate tensor parallelism on one device by splitting <code>q_proj</code> and <code>o_proj</code> column- and row-wise, summing the partial outputs, and checking they match the unsplit layer.</div>
+    <p class="ask"><b>Interview check:</b> A 70B model in BF16 needs to serve 8k-context chats. How many 80 GB GPUs, which parallelism, and why?</p>
+  </div>
+</section>
+
+<!-- ============ PRODUCTION ============ -->
+<section id="production">
+  <div class="eyebrow">Stage 11</div>
+  <h2>Production</h2>
+  <div class="module">
+    <div class="meta"><span class="chip todo">Not started</span><span class="chip info">Uses your FastAPI and ADK experience</span></div>
+    <ul>
+      <li><b>API.</b> OpenAI-compatible <code>/v1/chat/completions</code> with streaming over server-sent events and tool calls, so any agent framework can point at your engine.</li>
+      <li><b>Async design.</b> The HTTP server and the GPU step loop run separately and talk through queues.</li>
+      <li><b>Service targets.</b> p50 and p99 TTFT and TPOT, and goodput: requests per second that meet the targets.</li>
+      <li><b>Benchmarking honestly.</b> Fixed hardware and model, warm-up, realistic prompt and output lengths, arrival rates, several runs, and the same settings for every engine you compare.</li>
+      <li><b>Routing.</b> Send each request to the replica most likely to hold its prefix in cache; autoscale on queue depth, not CPU.</li>
+      <li><b>Observability and cost.</b> Prometheus metrics for queue length, cache use, batch size and tokens per second; cost per million tokens from hardware price and throughput.</li>
+    </ul>
+    <div class="build"><b>Build:</b> a FastAPI server on your engine, a Google ADK agent completing a multi-step tool task against it, a metrics endpoint, and a benchmark report against llama.cpp on your Intel GPU.</div>
+  </div>
+</section>
+
+<!-- ============ ECOSYSTEM ============ -->
+<section id="ecosystem">
+  <div class="eyebrow">Stage 12</div>
+  <h2>Engines to know</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Engine</th><th>Known for</th><th>What to read first</th></tr></thead>
+    <tbody>
+      <tr><td>vLLM</td><td>PagedAttention, continuous batching, broad model support; the default open-source server</td><td>The scheduler and the KV cache manager</td></tr>
+      <tr><td>SGLang</td><td>RadixAttention prefix caching, fast structured output</td><td>The radix cache and its scheduling policy</td></tr>
+      <tr><td>TensorRT-LLM</td><td>NVIDIA's compiled, highly tuned engine</td><td>Its documentation on in-flight batching and quantization</td></tr>
+      <tr><td>llama.cpp</td><td>Runs everywhere, GGUF quantized formats, CPU and many GPU backends including Intel (SYCL, Vulkan)</td><td>The GGUF quantization types and the SYCL backend</td></tr>
+      <tr><td>OpenVINO GenAI</td><td>Intel's own inference stack for CPUs, integrated and Arc GPUs</td><td>Its LLM pipeline and weight compression</td></tr>
+      <tr><td>nano-vllm, gpt-fast</td><td>Small, readable reimplementations of the core ideas</td><td>All of it: each is a few thousand lines or less</td></tr>
+    </tbody>
+  </table></div>
+  <p class="prose">Contributing even a small fix (a test, documentation, a bug labelled for newcomers) to vLLM, SGLang or llama.cpp is strong evidence for an inference role. Intel GPU support is a good area to look for issues, since you have the hardware.</p>
+</section>
+
+<!-- ============ INTERVIEW ============ -->
+<section id="interview">
+  <div class="eyebrow">Prepare</div>
+  <h2>Interview self-check</h2>
+  <p class="prose">Answer out loud first, then open the hint.</p>
+  <div style="display:grid;gap:10px">
+    <details><summary>Why is decoding memory-bound and prefill compute-bound?</summary><p>Decode multiplies one token's vector by every weight matrix, so each weight byte loaded supports about one multiply-add. Prefill multiplies hundreds of tokens by the same weights, so each byte loaded is reused hundreds of times and the matrix units become the limit.</p></details>
+    <details><summary>Compute Qwen3-0.6B's KV cache per token in BF16.</summary><p>2 × 28 layers × 8 KV heads × 128 × 2 bytes = 114,688 bytes, about 112 KiB. Without GQA (16 KV heads) it would be twice that.</p></details>
+    <details><summary>What does GQA change, and what does it cost?</summary><p>Fewer KV heads shrink the cache and the bytes read per decode step by the sharing factor. The cost is a small loss of model quality, which training largely recovers.</p></details>
+    <details><summary>Why does RoPE make attention depend only on relative position?</summary><p>Rotating q by angle mθ and k by nθ makes their dot product depend on (m − n)θ, because rotations compose by subtracting angles inside the dot product.</p></details>
+    <details><summary>Why does batching raise throughput nearly for free during decode?</summary><p>All requests in the batch share one read of the weights. Until the batch is large enough to become compute-bound, adding users adds little time per step.</p></details>
+    <details><summary>What problem does paged attention solve?</summary><p>Fragmentation and over-reservation in the KV cache. Fixed-size blocks allocated on demand mean memory is only used for tokens that exist, so more requests fit.</p></details>
+    <details><summary>How does speculative decoding keep outputs identical to the main model?</summary><p>Each drafted token is accepted with probability min(1, p_main / p_draft); on rejection, a token is sampled from the normalised difference of the two distributions. The result is distributed exactly as the main model's output.</p></details>
+    <details><summary>Name three metrics you would put on an inference dashboard and why.</summary><p>TTFT p99 (user-perceived responsiveness), TPOT p99 (streaming smoothness), and KV cache utilisation or queue depth (whether you are about to preempt or need to scale).</p></details>
+  </div>
+</section>
+
+<!-- ============ CHECKLIST ============ -->
+<section id="checklist">
+  <div class="eyebrow">Prepare</div>
+  <h2>Progress checklist</h2>
+  <p class="prose">Ticks are saved in this browser only.</p>
+  <div class="card check" id="checks">
+    <label><input type="checkbox" data-k="c1" checked> Tensor layout, dtypes and weight memory</label>
+    <label><input type="checkbox" data-k="c2" checked> Safe loading and inspecting Qwen3</label>
+    <label><input type="checkbox" data-k="c3" checked> RMSNorm verified and profiled</label>
+    <label><input type="checkbox" data-k="c4" checked> Attention, causal mask, multi-head, GQA</label>
+    <label><input type="checkbox" data-k="c5" checked> RoPE frequencies</label>
+    <label><input type="checkbox" data-k="c6"> Fix README RoPE direction, add XPU device helper</label>
+    <label><input type="checkbox" data-k="c7"> Turn test scripts into pytest with asserts</label>
+    <label><input type="checkbox" data-k="c8"> RoPE matches apply_rotary_pos_emb</label>
+    <label><input type="checkbox" data-k="c9"> Attention block with head_dim 128 and QK-norm matches layer 0</label>
+    <label><input type="checkbox" data-k="c10"> SwiGLU MLP and decoder layer match</label>
+    <label><input type="checkbox" data-k="c11"> Full model logits match Hugging Face</label>
+    <label><input type="checkbox" data-k="c12"> Own generate loop with sampling</label>
+    <label><input type="checkbox" data-k="c13"> KV cache with TTFT and TPOT measured</label>
+    <label><input type="checkbox" data-k="c14"> Bandwidth measured, decode floor explained</label>
+    <label><input type="checkbox" data-k="c15"> Continuous batching scheduler</label>
+    <label><input type="checkbox" data-k="c16"> Paged KV cache</label>
+    <label><input type="checkbox" data-k="c17"> Prefix caching with an agent benchmark</label>
+    <label><input type="checkbox" data-k="c18"> Fused Triton kernel on XPU</label>
+    <label><input type="checkbox" data-k="c19"> INT8 weights with perplexity check</label>
+    <label><input type="checkbox" data-k="c20"> Speculative and constrained decoding</label>
+    <label><input type="checkbox" data-k="c21"> OpenAI-compatible server with an agent on it</label>
+    <label><input type="checkbox" data-k="c22"> Benchmark report and blog post published</label>
+  </div>
+</section>
+
+<!-- ============ READING ============ -->
+<section id="reading">
+  <div class="eyebrow">Prepare</div>
+  <h2>Reading list</h2>
+  <div class="grid2">
+    <div class="card">
+      <h4>Foundations</h4>
+      <ul style="margin:0;padding-left:18px;display:grid;gap:6px">
+        <li>Vaswani et al., "Attention Is All You Need" (2017)</li>
+        <li>Su et al., "RoFormer: Enhanced Transformer with Rotary Position Embedding" (2021)</li>
+        <li>Ainslie et al., "GQA: Training Generalized Multi-Query Transformer Models" (2023)</li>
+        <li>Shazeer, "GLU Variants Improve Transformer" (2020), the source of SwiGLU</li>
+        <li>Horace He, "Making Deep Learning Go Brrrr From First Principles"</li>
+        <li><a href="https://github.com/huggingface/transformers/blob/main/src/transformers/models/qwen3/modeling_qwen3.py">modeling_qwen3.py</a> in transformers, your reference implementation</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Inference systems</h4>
+      <ul style="margin:0;padding-left:18px;display:grid;gap:6px">
+        <li>Yu et al., "Orca" (OSDI 2022), continuous batching</li>
+        <li>Kwon et al., "Efficient Memory Management for LLM Serving with PagedAttention" (2023)</li>
+        <li>Zheng et al., "SGLang: Efficient Execution of Structured Language Model Programs" (2023)</li>
+        <li>Dao et al., "FlashAttention" (2022) and "FlashAttention-2" (2023)</li>
+        <li>Leviathan et al., "Fast Inference from Transformers via Speculative Decoding" (2022)</li>
+        <li>Frantar et al., "GPTQ" (2022); Lin et al., "AWQ" (2023); Xiao et al., "SmoothQuant" (2022)</li>
+        <li><a href="https://docs.pytorch.org/docs/stable/notes/get_start_xpu.html">PyTorch: Getting Started on Intel GPU</a></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+</div>
+
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const fmtBytes = b => {
+    const u = ["B","KiB","MiB","GiB","TiB"]; let i = 0;
+    while (b >= 1024 && i < u.length-1){ b /= 1024; i++; }
+    return (b >= 100 ? b.toFixed(0) : b >= 10 ? b.toFixed(1) : b.toFixed(2)) + " " + u[i];
+  };
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  // 1. Weight memory
+  function mem(){
+    const p = Math.max(0, +$("mc-params").value) * 1e6;
+    const b = +$("mc-dtype").value;
+    $("mc-out").textContent = (p*b/1e9).toFixed(2) + " GB";
+    $("mc-fp32").textContent = (p*4/1e9).toFixed(2) + " GB";
+  }
+  ["mc-params","mc-dtype"].forEach(id => $(id).addEventListener("input", mem)); mem();
+
+  // 2. Attention
+  const K = [[1,0],[0,1],[1,1]], V = [[10,0],[0,20],[10,10]], names = ["The","cat","milk"];
+  function attn(){
+    const q = [+$("aq0").value, +$("aq1").value];
+    const sc = $("ascale").checked ? Math.sqrt(2) : 1;
+    const s = K.map(k => (q[0]*k[0] + q[1]*k[1]) / sc);
+    const m = Math.max(...s), e = s.map(x => Math.exp(x-m)), z = e.reduce((a,b)=>a+b,0);
+    const w = e.map(x => x/z);
+    const out = [0,1].map(j => w.reduce((a,wi,i)=>a + wi*V[i][j], 0));
+    $("aq-show").textContent = "[" + q.map(x=>x.toFixed(1)).join(", ") + "]";
+    $("aout").textContent = "[" + out.map(x=>x.toFixed(2)).join(", ") + "]";
+    $("abars").innerHTML = w.map((wi,i) =>
+      `<div class="barrow"><span>${names[i]} · score ${s[i].toFixed(2)}</span><div class="track"><div class="fill" style="width:${(wi*100).toFixed(1)}%"></div></div><span>${wi.toFixed(3)}</span></div>`).join("");
+  }
+  ["aq0","aq1","ascale"].forEach(id => $(id).addEventListener("input", attn)); attn();
+
+  // 3. Causal mask
+  function mask(){
+    const n = +$("mlen").value, g = $("maskgrid");
+    g.style.gridTemplateColumns = `repeat(${n+1}, 34px)`;
+    let h = '<div class="hd"></div>';
+    for (let j=0;j<n;j++) h += `<div class="hd">k${j}</div>`;
+    for (let i=0;i<n;i++){
+      h += `<div class="hd">q${i}</div>`;
+      for (let j=0;j<n;j++) h += j<=i ? '<div class="on">✓</div>' : '<div class="off">−∞</div>';
+    }
+    g.innerHTML = h;
+  }
+  $("mlen").addEventListener("input", mask); mask();
+
+  // 4. GQA
+  const palette = ["#1d55d0","#1d7a4d","#a35a00","#b42318","#6b4fd8","#0e7c86","#8a5a2b","#c2357a","#2f6f2f","#5b6b8a","#9b2c2c","#2b6cb0","#805ad5","#2c7a7b","#b7791f","#4a5568"];
+  function gqa(){
+    const nq = +$("gq").value; let nk = +$("gk").value;
+    if (nk > nq){ nk = nq; $("gk").value = String(nq); }
+    if (nq % nk){ $("gqaviz").innerHTML = '<p>Query heads must divide evenly by KV heads.</p>'; return; }
+    const grp = nq/nk;
+    let qh = '<div class="headrow"><span class="lbl">Query heads</span>';
+    for (let i=0;i<nq;i++) qh += `<span class="hb" style="background:${palette[Math.floor(i/grp)%16]}">Q${i}</span>`;
+    qh += '</div><div class="headrow"><span class="lbl">KV heads</span>';
+    for (let j=0;j<nk;j++) qh += `<span class="hb" style="background:${palette[j%16]};width:${34*grp + 6*(grp-1)}px">KV${j}</span>`;
+    $("gqaviz").innerHTML = qh + '</div>';
+    $("gqa-save").textContent = grp + "×";
+    $("gqa-kind").textContent = nk === 1 ? "MQA" : nk === nq ? "MHA" : "GQA";
+  }
+  ["gq","gk"].forEach(id => $(id).addEventListener("input", gqa)); gqa();
+
+  // 5. RoPE
+  const theta = 1e6, hd = 128;
+  function rope(){
+    const pos = +$("rpos").value, i = +$("rpair").value;
+    const f = Math.pow(theta, -2*i/hd), a = pos*f;
+    const x = [3*Math.cos(a) - 4*Math.sin(a), 3*Math.sin(a) + 4*Math.cos(a)];
+    $("r-freq").textContent = f >= 0.001 ? f.toFixed(3) : f.toExponential(2);
+    $("r-angle").textContent = ((a*180/Math.PI) % 360).toFixed(2) + "°";
+    const wave = 2*Math.PI/f;
+    $("r-wave").textContent = wave < 1000 ? wave.toFixed(1) : wave < 1e6 ? Math.round(wave).toLocaleString() : wave.toExponential(2);
+    $("r-vec").textContent = "[" + x.map(v => v.toFixed(2).replace("-","−")).join(", ") + "]";
+    const c = $("ropecanvas"), ctx = c.getContext("2d"), W = c.width, H = c.height, cx = W/2, cy = H/2, sc = 25;
+    ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle = css("--line"); ctx.lineWidth = 1;
+    for (let g=-6; g<=6; g++){ ctx.beginPath(); ctx.moveTo(cx+g*sc,0); ctx.lineTo(cx+g*sc,H); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0,cy+g*sc); ctx.lineTo(W,cy+g*sc); ctx.stroke(); }
+    ctx.strokeStyle = css("--muted"); ctx.beginPath(); ctx.arc(cx,cy,5*sc,0,Math.PI*2); ctx.stroke();
+    const arrow = (vx,vy,col,w) => { ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w;
+      const ex = cx+vx*sc, ey = cy-vy*sc; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(ex,ey); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ex,ey,5,0,Math.PI*2); ctx.fill(); };
+    arrow(3,4,css("--muted"),2); arrow(x[0],x[1],css("--accent"),3);
+    ctx.fillStyle = css("--muted"); ctx.font = "12px IBM Plex Mono, monospace";
+    ctx.fillText("original [3, 4]", 8, 18);
+    ctx.fillStyle = css("--accent"); ctx.fillText("rotated, position " + pos, 8, 36);
+    drawFreq(i);
+  }
+  function drawFreq(sel){
+    const c = $("freqcanvas"), ctx = c.getContext("2d"), W = c.width, H = c.height;
+    const L = 64, R = 16, T = 22, B = 34, pw = W-L-R, ph = H-T-B;
+    ctx.clearRect(0,0,W,H);
+    const lo = -7, hi = 0; // log10 range
+    const y = v => T + ph * (hi - Math.log10(v)) / (hi - lo);
+    const xs = i => L + pw * i/63;
+    ctx.font = "11px IBM Plex Mono, monospace"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (let p=hi; p>=lo; p--){
+      ctx.strokeStyle = css("--line"); ctx.beginPath(); ctx.moveTo(L, y(10**p)); ctx.lineTo(W-R, y(10**p)); ctx.stroke();
+      ctx.fillStyle = css("--muted"); ctx.fillText(p===0 ? "1" : "1e" + p, L-6, y(10**p));
+    }
+    ctx.textAlign = "center"; ctx.textBaseline = "top";
+    [0,16,32,48,63].forEach(i => ctx.fillText(String(i), xs(i), H-B+6));
+    ctx.fillText("pair index i", L + pw/2, H-14);
+    ctx.save(); ctx.translate(12, T+ph/2); ctx.rotate(-Math.PI/2); ctx.fillText("radians per token", 0, 0); ctx.restore();
+    ctx.beginPath(); for (let i=0;i<64;i++){ const v = Math.pow(theta,-2*i/hd); i ? ctx.lineTo(xs(i),y(v)) : ctx.moveTo(xs(i),y(v)); }
+    ctx.lineTo(xs(63), T+ph); ctx.lineTo(xs(0), T+ph); ctx.closePath(); ctx.fillStyle = css("--accent-soft"); ctx.fill();
+    ctx.beginPath(); for (let i=0;i<64;i++){ const v = Math.pow(theta,-2*i/hd); i ? ctx.lineTo(xs(i),y(v)) : ctx.moveTo(xs(i),y(v)); }
+    ctx.strokeStyle = css("--accent"); ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1;
+    const sv = Math.pow(theta,-2*sel/hd);
+    ctx.fillStyle = css("--accent"); ctx.beginPath(); ctx.arc(xs(sel), y(sv), 5, 0, Math.PI*2); ctx.fill();
+    ctx.textAlign = sel > 50 ? "right" : "left"; ctx.textBaseline = "bottom";
+    ctx.fillText("pair " + sel, xs(sel) + (sel > 50 ? -8 : 8), y(sv) - 6);
+  }
+  ["rpos","rpair"].forEach(id => $(id).addEventListener("input", rope)); rope();
+
+  // 6. KV cache
+  function kv(){
+    const per = 2 * +$("kv-l").value * +$("kv-h").value * +$("kv-d").value * +$("kv-b").value;
+    const req = per * +$("kv-ctx").value, all = req * +$("kv-n").value;
+    $("kv-tok").textContent = fmtBytes(per); $("kv-req").textContent = fmtBytes(req); $("kv-all").textContent = fmtBytes(all);
+  }
+  ["kv-l","kv-h","kv-d","kv-b","kv-ctx","kv-n"].forEach(id => $(id).addEventListener("input", kv)); kv();
+
+  // 7. Decode floor
+  function floor(){
+    const gb = +$("fl-gb").value, bw = +$("fl-bw").value * Math.min(1, Math.max(0.01, +$("fl-eff").value));
+    if (!(gb>0 && bw>0)) return;
+    const ms = gb/bw*1000;
+    $("fl-ms").textContent = ms.toFixed(1) + " ms"; $("fl-tps").textContent = Math.round(1000/ms);
+  }
+  ["fl-gb","fl-bw","fl-eff"].forEach(id => $(id).addEventListener("input", floor)); floor();
+
+  // Checklist persistence
+  const KEY = "inference-site-checks";
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch(e){}
+  document.querySelectorAll("#checks input").forEach(cb => {
+    if (cb.dataset.k in saved) cb.checked = saved[cb.dataset.k];
+    cb.addEventListener("change", () => { saved[cb.dataset.k] = cb.checked; try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch(e){} });
+  });
+
+  // Redraw canvases on theme change
+  if (window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener("change", rope);
+  new MutationObserver(rope).observe(document.documentElement, {attributes:true, attributeFilter:["data-theme"]});
+})();
+</script>
+</body>
+</html>
