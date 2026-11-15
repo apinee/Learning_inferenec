@@ -1,0 +1,35 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Generated profiling output
+perfetto_trace.json
+*.trace.json
+
+# Local model weights and caches
+models/
+.cache/
+.huggingface/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
